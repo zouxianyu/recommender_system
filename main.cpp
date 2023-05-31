@@ -10,6 +10,10 @@ int main() {
 //    auto test_dataset = read_test_dataset(R"(D:\source\CLionProjects\big_data\recommender_system\data\test.txt)");
 //    std::cout << "read test dataset finished" << std::endl;
 
+    std::cout << "reading item attributes" << std::endl;
+    auto item_attribute = read_item_attribute(R"(D:\source\CLionProjects\big_data\recommender_system\data\itemAttribute.txt)");
+    std::cout << "read item attributes finished" << std::endl;
+
     std::cout << "splitting train dataset" << std::endl;
     auto [train_dataset, test_dataset] = make_train_test(all_dataset, 3);
 

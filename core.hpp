@@ -8,6 +8,8 @@ SparseMatrix<double> read_train_dataset(const std::string &filename);
 
 SparseMatrix<double> read_test_dataset(const std::string &filename);
 
+SparseMatrix<int> read_item_attribute(const std::string &filename);
+
 void write_dataset(const std::string &filename,
                    const SparseMatrix<double> &mat);
 

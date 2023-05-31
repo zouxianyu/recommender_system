@@ -9,14 +9,15 @@
 
 using namespace indicators;
 
-using Item = SparseMatrix<double>::Item;
+using FpItem = SparseMatrix<double>::Item;
+using IntItem = SparseMatrix<int>::Item;
 
 SparseMatrix<double> read_dataset(const std::string &filename, bool has_score) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open file " + filename);
     }
-    std::vector<Item> items;
+    std::vector<FpItem> items;
     char split;
     size_t user_id, items_count;
     while (!file.eof() &&
@@ -36,6 +37,47 @@ SparseMatrix<double> read_dataset(const std::string &filename, bool has_score) {
     return SparseMatrix<double>(items);
 }
 
+SparseMatrix<double> read_train_dataset(const std::string &filename) {
+    return read_dataset(filename, true);
+}
+
+SparseMatrix<double> read_test_dataset(const std::string &filename) {
+    return read_dataset(filename, false);
+}
+
+SparseMatrix<int> read_item_attribute(const std::string &filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open file " + filename);
+    }
+
+    std::vector<IntItem> items;
+    size_t item_id;
+    std::string line;
+    while (!file.eof()) {
+        char split;
+        file >> item_id >> split;
+        std::getline(file, line);
+        if (line.empty()) {
+            continue;
+        }
+        auto pos = line.find_first_of('|');
+        if (pos == std::string::npos) {
+            throw std::runtime_error("Item attribute file format error");
+        }
+        std::string attr1_str = line.substr(0, pos);
+        std::string attr2_str = line.substr(pos + 1);
+
+        if (attr1_str != "None") {
+            items.emplace_back(item_id, std::stoi(attr1_str), 1);
+        }
+        if (attr2_str != "None") {
+            items.emplace_back(item_id, std::stoi(attr2_str), 1);
+        }
+    }
+    return SparseMatrix<int>(items);
+}
+
 void write_dataset(const std::string &filename,
                    const SparseMatrix<double> &mat) {
 
@@ -45,7 +87,7 @@ void write_dataset(const std::string &filename,
     }
 
     for (size_t row_id: mat.row_indexes()) {
-        std::span<const Item> row = mat.get_row(row_id);
+        std::span<const FpItem> row = mat.get_row(row_id);
         file << row_id << "|" << row.size() << std::endl;
         for (const auto &item: row) {
             file << item.col << "  " << item.val << std::endl;
@@ -53,20 +95,12 @@ void write_dataset(const std::string &filename,
     }
 }
 
-SparseMatrix<double> read_train_dataset(const std::string &filename) {
-    return read_dataset(filename, true);
-}
-
-SparseMatrix<double> read_test_dataset(const std::string &filename) {
-    return read_dataset(filename, false);
-}
-
 std::pair<SparseMatrix<double>, SparseMatrix<double>> make_train_test(
         const SparseMatrix<double> &mat, size_t test_count) {
-    std::vector<Item> train_items;
-    std::vector<Item> test_items;
+    std::vector<FpItem> train_items;
+    std::vector<FpItem> test_items;
     for (size_t row_id: mat.row_indexes()) {
-        std::span<const Item> row = mat.get_row(row_id);
+        std::span<const FpItem> row = mat.get_row(row_id);
         if (row.size() <= test_count) {
             continue;
         }
@@ -109,8 +143,8 @@ inline T square(T x) { return x * x; }
 
 double pearson(const SparseMatrix<double> &mat, size_t x, size_t y,
                const std::map<size_t, double> &avg_score) {
-    std::span<const Item> row_x = mat.get_row(x);
-    std::span<const Item> row_y = mat.get_row(y);
+    std::span<const FpItem> row_x = mat.get_row(x);
+    std::span<const FpItem> row_y = mat.get_row(y);
     double avg_x = avg_score.at(x);
     double avg_y = avg_score.at(y);
 
@@ -234,11 +268,11 @@ SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
     auto similar_score_map =
             get_top_k_similar_mat(user_mat, 500, user_avg_score);
 
-    std::vector<Item> result;
+    std::vector<FpItem> result;
 
     for (size_t test_user_id: test_user_mat.row_indexes()) {
         double bias_user = user_avg_score[test_user_id] - global_avg_score;
-        for (const Item &item: test_user_mat.get_row(test_user_id)) {
+        for (const FpItem &item: test_user_mat.get_row(test_user_id)) {
             const size_t &item_id = item.col;
             double bias_item = item_avg_score[item_id] - global_avg_score;
             double score_base = global_avg_score + bias_user + bias_item;
@@ -281,8 +315,8 @@ double RMSE(const SparseMatrix<double> &mat1,
             const SparseMatrix<double> &mat2) {
 
 
-    std::span<const Item> mat1_rows = mat1.get_all();
-    std::span<const Item> mat2_rows = mat2.get_all();
+    std::span<const FpItem> mat1_rows = mat1.get_all();
+    std::span<const FpItem> mat2_rows = mat2.get_all();
 
     if (mat1_rows.size() != mat2_rows.size()) {
         throw std::runtime_error("RMSE size not equal");
@@ -292,8 +326,8 @@ double RMSE(const SparseMatrix<double> &mat1,
     size_t count = mat1_rows.size();
 
     for (size_t i = 0; i < count; ++i) {
-        const Item &predict_item = mat1_rows[i];
-        const Item &real_item = mat2_rows[i];
+        const FpItem &predict_item = mat1_rows[i];
+        const FpItem &real_item = mat2_rows[i];
         if (predict_item.row != real_item.row ||
             predict_item.col != real_item.col) {
             throw std::runtime_error("RMSE row or col not equal");
