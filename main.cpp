@@ -1,35 +1,39 @@
 #include <iostream>
+#include <iomanip>
 #include "core.hpp"
 
+inline void doing(const std::string &str) {
+    std::cout << std::setw(60) << std::left << str << " ... " << std::flush;
+}
+
+inline void done() {
+    std::cout << "done" << std::endl;
+}
+
 int main() {
-    std::cout << "reading train dataset" << std::endl;
+    doing("reading train dataset");
     auto all_dataset = read_train_dataset(R"(D:\source\CLionProjects\big_data\recommender_system\data\train.txt)");
-    std::cout << "read train dataset finished" << std::endl;
+    done();
 
 //    std::cout << "reading test dataset" << std::endl;
 //    auto test_dataset = read_test_dataset(R"(D:\source\CLionProjects\big_data\recommender_system\data\test.txt)");
 //    std::cout << "read test dataset finished" << std::endl;
 
-    std::cout << "reading item attributes" << std::endl;
+    doing("reading item attributes");
     auto item_attribute = read_item_attribute(R"(D:\source\CLionProjects\big_data\recommender_system\data\itemAttribute.txt)");
-    std::cout << "read item attributes finished" << std::endl;
+    done();
 
-    std::cout << "splitting train dataset" << std::endl;
+    doing("making train and test dataset");
     auto [train_dataset, test_dataset] = make_train_test(all_dataset, 3);
+    done();
 
-//    auto row = test_dataset.get_row(19834);
-//    std::cout << "user[<last>].size = " << row.size() << std::endl;
-//    for (auto item: row) {
-//        std::cout << item.row << " " << item.col << " " << item.val << std::endl;
-//    }
-
-    auto result = solve(train_dataset, test_dataset);
+    auto result = solve(train_dataset, test_dataset, item_attribute);
 
     std::cout << "RMSE = " << RMSE(result, test_dataset) << std::endl;
 
-    std::cout << "writing result" << std::endl;
+    doing("writing result");
     write_dataset(R"(D:\source\CLionProjects\big_data\recommender_system\data\result.txt)", result);
-    std::cout << "write result finished" << std::endl;
+    done();
 
     return 0;
 }

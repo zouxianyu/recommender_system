@@ -223,7 +223,7 @@ std::map<size_t, std::vector<std::pair<size_t, double>>> get_top_k_similar_mat(
     const size_t all_count = row_ids.size() * (row_ids.size() - 1) / 2;
     size_t current_count = 0;
     ProgressBar bar{
-            option::PrefixText{"Calculating Pearson Score"},
+            option::PrefixText{"Train  "},
             option::BarWidth{50},
             option::ShowPercentage{true},
             option::ShowElapsedTime{true},
@@ -257,6 +257,30 @@ std::map<size_t, std::vector<std::pair<size_t, double>>> get_top_k_similar_mat(
     return result;
 }
 
+std::vector<size_t> get_similar_items(
+        size_t item_id,
+        const SparseMatrix<int> &item_attr,
+        const SparseMatrix<int> &item_attr_rev
+) {
+    std::vector<size_t> result;
+
+    std::span<const IntItem> attrs = item_attr.get_row(item_id);
+    for (const IntItem &attr: attrs) {
+        const size_t &attr_id = attr.col;
+
+        // find which item has the same attribute id
+        std::span<const IntItem> entries = item_attr_rev.get_row(attr_id);
+        for (const IntItem &entry: entries) {
+            const size_t &similar_item_id = entry.col;
+            if (similar_item_id == item_id) {
+                continue;
+            }
+            result.emplace_back(similar_item_id);
+        }
+    }
+    return result;
+}
+
 double predict(
         size_t user_id,
         size_t item_id,
@@ -264,7 +288,10 @@ double predict(
         double global_avg_score,
         std::map<size_t, double> &user_avg_score,
         std::map<size_t, double> &item_avg_score,
-        std::map<size_t, std::vector<std::pair<size_t, double>>> &similar_score_map
+        std::map<size_t, std::vector<std::pair<size_t, double>>> &similar_score_map,
+        const SparseMatrix<int> &item_attr,
+        const SparseMatrix<int> &item_attr_rev,
+        bool first_try
 ) {
     double bias_user = user_avg_score[user_id] - global_avg_score;
     double bias_item = item_avg_score[item_id] - global_avg_score;
@@ -287,30 +314,78 @@ double predict(
         double similar_score_base =
                 global_avg_score + bias_similar_user + bias_item;
 
-        numerator += similarity * (
-                similar_user_score - similar_score_base);
+        numerator += similarity * (similar_user_score - similar_score_base);
         denominator += std::abs(similarity);
     }
 
-    double score = score_base;
-    if (denominator >=
-        std::numeric_limits<double>::epsilon()) {
-        score += numerator / denominator;
+    double score;
+    if (denominator < std::numeric_limits<double>::epsilon()) {
+        if (!first_try) {
+            return -1;
+        }
+
+        double similar_item_score_sum = 0;
+        size_t valid_similar_item_count = 0;
+        for (size_t similar_item_id: get_similar_items(
+                item_id, item_attr, item_attr_rev)) {
+
+            double similar_item_score = predict(
+                    user_id,
+                    similar_item_id,
+                    user_mat,
+                    global_avg_score,
+                    user_avg_score,
+                    item_avg_score,
+                    similar_score_map,
+                    item_attr,
+                    item_attr_rev,
+                    false
+            );
+            if (similar_item_score < 0) {
+                continue;
+            }
+            similar_item_score_sum += similar_item_score;
+            valid_similar_item_count++;
+        }
+
+        if (valid_similar_item_count != 0) {
+            score = similar_item_score_sum / valid_similar_item_count;
+        } else {
+            score = score_base;
+        }
+    } else {
+        score = score_base + numerator / denominator;
     }
+
     score = std::clamp(score, 0.0, 100.0);
     return score;
 }
 
 SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
-                           const SparseMatrix<double> &test_user_mat) {
+                           const SparseMatrix<double> &test_user_mat,
+                           const SparseMatrix<int> &item_attr) {
+
     SparseMatrix<double> item_mat = user_mat.transpose();
 
     double global_avg_score = get_global_avg_score(user_mat);
     std::map<size_t, double> user_avg_score = get_avg_score_by_row(user_mat);
     std::map<size_t, double> item_avg_score = get_avg_score_by_row(item_mat);
 
+    SparseMatrix<int> item_attr_rev = item_attr.transpose();
+
     auto similar_score_map =
             get_top_k_similar_mat(user_mat, 500, user_avg_score);
+
+    // info for progress bar
+    const size_t all_count = test_user_mat.get_all().size();
+    size_t current_count = 0;
+    ProgressBar bar{
+            option::PrefixText{"Predict"},
+            option::BarWidth{50},
+            option::ShowPercentage{true},
+            option::ShowElapsedTime{true},
+            option::ShowRemainingTime{true},
+    };
 
     std::vector<FpItem> result;
 
@@ -325,10 +400,19 @@ SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
                     global_avg_score,
                     user_avg_score,
                     item_avg_score,
-                    similar_score_map
+                    similar_score_map,
+                    item_attr,
+                    item_attr_rev,
+                    true
             );
 
             result.emplace_back(test_user_id, item_id, score);
+
+            // show progress bar
+            double progress = static_cast<double>(++current_count) / all_count;
+            if (current_count == all_count || current_count % 500 == 0) {
+                bar.set_progress(progress * 100);
+            }
         }
     }
     return SparseMatrix<double>(result);

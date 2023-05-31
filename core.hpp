@@ -16,8 +16,9 @@ void write_dataset(const std::string &filename,
 std::pair<SparseMatrix<double>, SparseMatrix<double>> make_train_test(
         const SparseMatrix<double> &mat, size_t test_count);
 
-    SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
-                               const SparseMatrix<double> &test_user_mat);
+SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
+                           const SparseMatrix<double> &test_user_mat,
+                           const SparseMatrix<int> &item_attr);
 
 double RMSE(const SparseMatrix<double> &mat1,
             const SparseMatrix<double> &mat2);
