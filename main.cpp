@@ -2,11 +2,11 @@
 #include <iomanip>
 #include "core.hpp"
 
-inline void doing(const std::string &str) {
+void doing(const std::string &str) {
     std::cout << std::setw(60) << std::left << str << " ... " << std::flush;
 }
 
-inline void done() {
+void done() {
     std::cout << "done" << std::endl;
 }
 

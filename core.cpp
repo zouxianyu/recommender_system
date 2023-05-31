@@ -299,6 +299,7 @@ double predict(
 
     double numerator = 0;
     double denominator = 0;
+    size_t count = 0;
     for (const auto &[similar_user, similarity]:
             similar_score_map[user_id]) {
 
@@ -307,6 +308,7 @@ double predict(
         if (similar_user_score < 0) {
             continue;
         }
+        count++;
 
         double bias_similar_user =
                 user_avg_score[similar_user] - global_avg_score;
@@ -319,7 +321,7 @@ double predict(
     }
 
     double score;
-    if (denominator < std::numeric_limits<double>::epsilon()) {
+    if (denominator < std::numeric_limits<double>::epsilon() || count <= 3) {
         if (!first_try) {
             return -1;
         }
