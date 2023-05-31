@@ -257,6 +257,50 @@ std::map<size_t, std::vector<std::pair<size_t, double>>> get_top_k_similar_mat(
     return result;
 }
 
+double predict(
+        size_t user_id,
+        size_t item_id,
+        const SparseMatrix<double> &user_mat,
+        double global_avg_score,
+        std::map<size_t, double> &user_avg_score,
+        std::map<size_t, double> &item_avg_score,
+        std::map<size_t, std::vector<std::pair<size_t, double>>> &similar_score_map
+) {
+    double bias_user = user_avg_score[user_id] - global_avg_score;
+    double bias_item = item_avg_score[item_id] - global_avg_score;
+    double score_base = global_avg_score + bias_user + bias_item;
+
+    double numerator = 0;
+    double denominator = 0;
+    for (const auto &[similar_user, similarity]:
+            similar_score_map[user_id]) {
+
+        // if the similar user has rated the item
+        double similar_user_score = user_mat.get(similar_user, item_id);
+        if (similar_user_score < 0) {
+            continue;
+        }
+
+        double bias_similar_user =
+                user_avg_score[similar_user] - global_avg_score;
+
+        double similar_score_base =
+                global_avg_score + bias_similar_user + bias_item;
+
+        numerator += similarity * (
+                similar_user_score - similar_score_base);
+        denominator += std::abs(similarity);
+    }
+
+    double score = score_base;
+    if (denominator >=
+        std::numeric_limits<double>::epsilon()) {
+        score += numerator / denominator;
+    }
+    score = std::clamp(score, 0.0, 100.0);
+    return score;
+}
+
 SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
                            const SparseMatrix<double> &test_user_mat) {
     SparseMatrix<double> item_mat = user_mat.transpose();
@@ -271,40 +315,19 @@ SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
     std::vector<FpItem> result;
 
     for (size_t test_user_id: test_user_mat.row_indexes()) {
-        double bias_user = user_avg_score[test_user_id] - global_avg_score;
         for (const FpItem &item: test_user_mat.get_row(test_user_id)) {
             const size_t &item_id = item.col;
-            double bias_item = item_avg_score[item_id] - global_avg_score;
-            double score_base = global_avg_score + bias_user + bias_item;
 
-            double numerator = 0;
-            double denominator = 0;
-            for (const auto &[similar_user, similarity]:
-                    similar_score_map[test_user_id]) {
+            double score = predict(
+                    test_user_id,
+                    item_id,
+                    user_mat,
+                    global_avg_score,
+                    user_avg_score,
+                    item_avg_score,
+                    similar_score_map
+            );
 
-                // if the similar user has rated the item
-                double similar_user_score = user_mat.get(similar_user, item_id);
-                if (similar_user_score < 0) {
-                    continue;
-                }
-
-                double bias_similar_user =
-                        user_avg_score[similar_user] - global_avg_score;
-
-                double similar_score_base =
-                        global_avg_score + bias_similar_user + bias_item;
-
-                numerator += similarity * (
-                        similar_user_score - similar_score_base);
-                denominator += std::abs(similarity);
-            }
-
-            double score = score_base;
-            if (denominator >=
-                std::numeric_limits<double>::epsilon()) {
-                score += numerator / denominator;
-            }
-            score = std::clamp(score, 0.0, 100.0);
             result.emplace_back(test_user_id, item_id, score);
         }
     }
@@ -313,7 +336,6 @@ SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
 
 double RMSE(const SparseMatrix<double> &mat1,
             const SparseMatrix<double> &mat2) {
-
 
     std::span<const FpItem> mat1_rows = mat1.get_all();
     std::span<const FpItem> mat2_rows = mat2.get_all();
