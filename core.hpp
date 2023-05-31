@@ -1,0 +1,23 @@
+#ifndef RECOMMENDER_SYSTEM_CORE_HPP
+#define RECOMMENDER_SYSTEM_CORE_HPP
+
+#include <string>
+#include "sparse_matrix.hpp"
+
+SparseMatrix<double> read_train_dataset(const std::string &filename);
+
+SparseMatrix<double> read_test_dataset(const std::string &filename);
+
+void write_dataset(const std::string &filename,
+                   const SparseMatrix<double> &mat);
+
+std::pair<SparseMatrix<double>, SparseMatrix<double>> make_train_test(
+        const SparseMatrix<double> &mat, size_t test_count);
+
+    SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
+                               const SparseMatrix<double> &test_user_mat);
+
+double RMSE(const SparseMatrix<double> &mat1,
+            const SparseMatrix<double> &mat2);
+
+#endif //RECOMMENDER_SYSTEM_CORE_HPP

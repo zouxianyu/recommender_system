@@ -1,0 +1,9 @@
+{
+  "name" : "recommender-system",
+  "version-string" : "1.0.0",
+  "builtin-baseline" : "80d08d2900147c864c17e4bdfc928699cb84b3f2",
+  "dependencies" : [ {
+    "name" : "indicators",
+    "version>=" : "2.2"
+  } ]
+}
