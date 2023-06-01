@@ -132,16 +132,29 @@ std::pair<SparseMatrix<double>, SparseMatrix<double>> make_train_test(
         const SparseMatrix<double> &mat, size_t test_count) {
     std::vector<FpItem> train_items;
     std::vector<FpItem> test_items;
+
+    // the answer to life, the universe and everything
+    srand(42);
+    size_t seed = rand();
+
     for (size_t row_id: mat.row_indexes()) {
         std::span<const FpItem> row = mat.get_row(row_id);
         if (row.size() <= test_count) {
             continue;
         }
-        auto train_row = row.subspan(0, row.size() - test_count);
-        auto test_row = row.subspan(row.size() - test_count, test_count);
-        train_items.insert(train_items.end(), train_row.begin(),
-                           train_row.end());
-        test_items.insert(test_items.end(), test_row.begin(), test_row.end());
+
+        for (size_t i = 0; i < row.size(); ++i) {
+            size_t next_i = i + row.size();
+            size_t base = seed % row.size();
+
+            if ((base <= i && i < base + test_count) ||
+                (base <= next_i && next_i < base + test_count)) {
+                test_items.emplace_back(row[i]);
+            } else {
+                train_items.emplace_back(row[i]);
+            }
+        }
+
     }
     return {SparseMatrix<double>(train_items),
             SparseMatrix<double>(test_items)};

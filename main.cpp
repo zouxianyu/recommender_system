@@ -65,6 +65,10 @@ int main(int argc, char *argv[]) {
             auto result = predict(train_dataset, test_dataset, item_attribute);
 
             std::cout << "RMSE = " << RMSE(result, test_dataset) << std::endl;
+
+            doing("writing result");
+            write_dataset(result_filename, result);
+            done();
         } else {
             doing("reading test dataset");
             auto test_dataset = read_test_dataset(test_filename);
