@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <iostream>
 #include <vector>
+#include <array>
 #include <indicators/progress_bar.hpp>
 #include "core.hpp"
 
@@ -12,6 +13,12 @@ using namespace indicators;
 using FpItem = SparseMatrix<double>::Item;
 using IntItem = SparseMatrix<int>::Item;
 
+/**
+ * read dataset from file (train or test)
+ * @param filename file name of the dataset
+ * @param has_score whether the dataset has score
+ * @return the dataset stored in SparseMatrix
+ */
 SparseMatrix<double> read_dataset(const std::string &filename, bool has_score) {
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -37,14 +44,29 @@ SparseMatrix<double> read_dataset(const std::string &filename, bool has_score) {
     return SparseMatrix<double>(items);
 }
 
+/**
+ * read train dataset from file (wrapper)
+ * @param filename file name of the dataset
+ * @return the dataset stored in SparseMatrix
+ */
 SparseMatrix<double> read_train_dataset(const std::string &filename) {
     return read_dataset(filename, true);
 }
 
+/**
+ * read test dataset from file (wrapper)
+ * @param filename file name of the dataset
+ * @return the dataset stored in SparseMatrix
+ */
 SparseMatrix<double> read_test_dataset(const std::string &filename) {
     return read_dataset(filename, false);
 }
 
+/**
+ * read item attribute from file
+ * @param filename file name of the item attribute
+ * @return item attribute stored in SparseMatrix, '1' for attribute exists
+ */
 SparseMatrix<int> read_item_attribute(const std::string &filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -78,6 +100,11 @@ SparseMatrix<int> read_item_attribute(const std::string &filename) {
     return SparseMatrix<int>(items);
 }
 
+/**
+ * write result to file
+ * @param filename file name of the result
+ * @param mat result stored in SparseMatrix
+ */
 void write_dataset(const std::string &filename,
                    const SparseMatrix<double> &mat) {
 
@@ -95,6 +122,12 @@ void write_dataset(const std::string &filename,
     }
 }
 
+/**
+ * split dataset into train and test
+ * @param mat the whole dataset
+ * @param test_count count of test items for each user
+ * @return train and test dataset
+ */
 std::pair<SparseMatrix<double>, SparseMatrix<double>> make_train_test(
         const SparseMatrix<double> &mat, size_t test_count) {
     std::vector<FpItem> train_items;
@@ -114,6 +147,11 @@ std::pair<SparseMatrix<double>, SparseMatrix<double>> make_train_test(
             SparseMatrix<double>(test_items)};
 }
 
+/**
+ * get average score for each row (user / item)
+ * @param mat dataset
+ * @return average score for each row (represented by map)
+ */
 std::map<size_t, double> get_avg_score_by_row(const SparseMatrix<double> &mat) {
     std::map<size_t, double> avg_score;
     for (const auto &row_id: mat.row_indexes()) {
@@ -128,6 +166,11 @@ std::map<size_t, double> get_avg_score_by_row(const SparseMatrix<double> &mat) {
     return avg_score;
 }
 
+/**
+ * get average score for the whole dataset
+ * @param mat dataset
+ * @return average score
+ */
 double get_global_avg_score(const SparseMatrix<double> &mat) {
     double sum = 0;
     size_t count = 0;
@@ -141,6 +184,14 @@ double get_global_avg_score(const SparseMatrix<double> &mat) {
 template<typename T>
 inline T square(T x) { return x * x; }
 
+/**
+ * calculate pearson correlation between two rows (user / item)
+ * @param mat dataset
+ * @param x the first row
+ * @param y the second row
+ * @param avg_score cached average score for each row
+ * @return pearson correlation between two rows
+ */
 double pearson(const SparseMatrix<double> &mat, size_t x, size_t y,
                const std::map<size_t, double> &avg_score) {
     std::span<const FpItem> row_x = mat.get_row(x);
@@ -187,11 +238,25 @@ double pearson(const SparseMatrix<double> &mat, size_t x, size_t y,
     return numerator / denominator;
 }
 
+/**
+ * comparator for the top-k top-k items with highest score
+ * (for min heap)
+ * @param a
+ * @param b
+ * @return compare result
+ */
 bool heap_compare(const std::pair<size_t, double> &a,
                   const std::pair<size_t, double> &b) {
     return a.second > b.second;
 }
 
+/**
+ * update top-k items with highest score
+ * @param top_k top-k items with highest score
+ * @param k k value
+ * @param id new item id
+ * @param score item's score
+ */
 void update_top_k_score(std::vector<std::pair<size_t, double>> &top_k,
                         size_t k, size_t id, double score) {
     if (top_k.size() < k) {
@@ -204,6 +269,13 @@ void update_top_k_score(std::vector<std::pair<size_t, double>> &top_k,
     }
 }
 
+/**
+ * make similarity matrix
+ * @param mat dataset
+ * @param k k value
+ * @param avg_score cached average score for each row
+ * @return similarity matrix (represented by map)
+ */
 std::map<size_t, std::vector<std::pair<size_t, double>>> get_top_k_similar_mat(
         const SparseMatrix<double> &mat, size_t k,
         const std::map<size_t, double> &avg_score) {
@@ -257,30 +329,44 @@ std::map<size_t, std::vector<std::pair<size_t, double>>> get_top_k_similar_mat(
     return result;
 }
 
-std::vector<size_t> get_similar_items(
+/**
+ * get similar items of a given item
+ * @param item_id item id to find similar items
+ * @param item_attr item attribute matrix (item -> attribute)
+ * @param item_attr_rev reverse item attribute matrix (attribute -> item)
+ * @return similar items split by attribute
+ */
+std::array<std::span<const IntItem>, 2> get_similar_items(
         size_t item_id,
         const SparseMatrix<int> &item_attr,
         const SparseMatrix<int> &item_attr_rev
 ) {
-    std::vector<size_t> result;
-
+    std::array<std::span<const IntItem>, 2> result;
     std::span<const IntItem> attrs = item_attr.get_row(item_id);
-    for (const IntItem &attr: attrs) {
-        const size_t &attr_id = attr.col;
-
+    for (size_t i = 0; i < attrs.size(); ++i) {
         // find which item has the same attribute id
+        const size_t &attr_id = attrs[i].col;
         std::span<const IntItem> entries = item_attr_rev.get_row(attr_id);
-        for (const IntItem &entry: entries) {
-            const size_t &similar_item_id = entry.col;
-            if (similar_item_id == item_id) {
-                continue;
-            }
-            result.emplace_back(similar_item_id);
-        }
+        result[i] = entries;
     }
     return result;
 }
 
+/**
+ * predict score of a given item
+ * @param user_id user id to predict
+ * @param item_id item id to predict
+ * @param user_mat user matrix (user -> item score)
+ * @param global_avg_score cached global average score
+ * @param user_avg_score cached average score for each user
+ * @param item_avg_score cached average score for each item
+ * @param similar_score_map cached similar score map
+ * @param item_attr item attribute matrix (item -> attribute)
+ * @param item_attr_rev reverse item attribute matrix (attribute -> item)
+ * @param first_try whether it is the first try,
+ *                  determine whether to calculate similar items
+ * @return predicted score
+ */
 double predict(
         size_t user_id,
         size_t item_id,
@@ -321,37 +407,58 @@ double predict(
     }
 
     double score;
-    if (denominator < std::numeric_limits<double>::epsilon() || count <= 3) {
+    if (denominator < std::numeric_limits<double>::epsilon() || count <= 1) {
         if (!first_try) {
             return -1;
         }
 
-        double similar_item_score_sum = 0;
-        size_t valid_similar_item_count = 0;
-        for (size_t similar_item_id: get_similar_items(
+        double similar_item_score_nominator = 0;
+        double similar_item_score_denominator = 0;
+        for (std::span<const IntItem> items: get_similar_items(
                 item_id, item_attr, item_attr_rev)) {
 
-            double similar_item_score = predict(
-                    user_id,
-                    similar_item_id,
-                    user_mat,
-                    global_avg_score,
-                    user_avg_score,
-                    item_avg_score,
-                    similar_score_map,
-                    item_attr,
-                    item_attr_rev,
-                    false
-            );
-            if (similar_item_score < 0) {
+            size_t similar_item_count = items.size() - 1;
+            if (similar_item_count <= 0) {
                 continue;
             }
-            similar_item_score_sum += similar_item_score;
-            valid_similar_item_count++;
+
+            double attr_weight = 1.0 / similar_item_count;
+
+            for (const IntItem &entry: items) {
+                const size_t &similar_item_id = entry.col;
+
+                // skip the item itself
+                if (similar_item_id == item_id) {
+                    continue;
+                }
+
+                double similar_item_score = predict(
+                        user_id,
+                        similar_item_id,
+                        user_mat,
+                        global_avg_score,
+                        user_avg_score,
+                        item_avg_score,
+                        similar_score_map,
+                        item_attr,
+                        item_attr_rev,
+                        false
+                );
+                if (similar_item_score < 0) {
+                    continue;
+                }
+
+                similar_item_score_nominator +=
+                        attr_weight * similar_item_score;
+                similar_item_score_denominator += attr_weight;
+            }
+
         }
 
-        if (valid_similar_item_count != 0) {
-            score = similar_item_score_sum / valid_similar_item_count;
+        if (similar_item_score_denominator >
+            std::numeric_limits<double>::epsilon()) {
+            score = similar_item_score_nominator /
+                    similar_item_score_denominator;
         } else {
             score = score_base;
         }
@@ -363,6 +470,13 @@ double predict(
     return score;
 }
 
+/**
+ * solve the problem
+ * @param user_mat train dataset
+ * @param test_user_mat test dataset
+ * @param item_attr item attribute matrix (item -> attribute)
+ * @return predicted score matrix
+ */
 SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
                            const SparseMatrix<double> &test_user_mat,
                            const SparseMatrix<int> &item_attr) {
@@ -376,7 +490,7 @@ SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
     SparseMatrix<int> item_attr_rev = item_attr.transpose();
 
     auto similar_score_map =
-            get_top_k_similar_mat(user_mat, 500, user_avg_score);
+            get_top_k_similar_mat(user_mat, 5000, user_avg_score);
 
     // info for progress bar
     const size_t all_count = test_user_mat.get_all().size();
@@ -420,6 +534,12 @@ SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
     return SparseMatrix<double>(result);
 }
 
+/**
+ * calculate RMSE between two matrix (same size)
+ * @param mat1
+ * @param mat2
+ * @return RMSE
+ */
 double RMSE(const SparseMatrix<double> &mat1,
             const SparseMatrix<double> &mat2) {
 
