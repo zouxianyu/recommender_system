@@ -13,6 +13,10 @@ SparseMatrix<int> read_item_attribute(const std::string &filename);
 void write_dataset(const std::string &filename,
                    const SparseMatrix<double> &mat);
 
+void write_dataset_in_order(const std::string &reference,
+                            const std::string &filename,
+                            const SparseMatrix<double> &mat);
+
 std::pair<SparseMatrix<double>, SparseMatrix<double>> make_train_test(
         const SparseMatrix<double> &mat, size_t test_count);
 

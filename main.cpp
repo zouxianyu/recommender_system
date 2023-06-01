@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
             auto result = predict(all_dataset, test_dataset, item_attribute);
 
             doing("writing result");
-            write_dataset(result_filename, result);
+            write_dataset_in_order(test_filename, result_filename, result);
             done();
         }
     } catch (const std::exception &e) {

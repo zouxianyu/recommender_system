@@ -14,12 +14,13 @@ using FpItem = SparseMatrix<double>::Item;
 using IntItem = SparseMatrix<int>::Item;
 
 /**
- * read dataset from file (train or test)
+ * read dataset from file in order (train or test)
  * @param filename file name of the dataset
  * @param has_score whether the dataset has score
- * @return the dataset stored in SparseMatrix
+ * @return the dataset stored in vector
  */
-SparseMatrix<double> read_dataset(const std::string &filename, bool has_score) {
+std::vector<FpItem> read_dataset_in_order(
+        const std::string &filename, bool has_score) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open file " + filename);
@@ -41,7 +42,17 @@ SparseMatrix<double> read_dataset(const std::string &filename, bool has_score) {
             items.emplace_back(user_id, item_id, score);
         }
     }
-    return SparseMatrix<double>(items);
+    return items;
+}
+
+/**
+ * read dataset from file (train or test)
+ * @param filename file name of the dataset
+ * @param has_score whether the dataset has score
+ * @return the dataset stored in SparseMatrix
+ */
+SparseMatrix<double> read_dataset(const std::string &filename, bool has_score) {
+    return SparseMatrix<double>(read_dataset_in_order(filename, has_score));
 }
 
 /**
@@ -119,6 +130,31 @@ void write_dataset(const std::string &filename,
         for (const auto &item: row) {
             file << item.col << "  " << item.val << std::endl;
         }
+    }
+}
+
+/**
+ * write result to file in order
+ * @param reference reference file name
+ * @param filename file name of the result
+ * @param mat result stored in SparseMatrix
+ */
+void write_dataset_in_order(const std::string &reference,
+                            const std::string &filename,
+                            const SparseMatrix<double> &mat) {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open file " + filename);
+    }
+
+    std::vector<FpItem> queries = read_dataset_in_order(reference, false);
+    size_t prev = std::numeric_limits<size_t>::max();
+    for (auto [user_id, item_id, _]: queries) {
+        if (user_id != prev) {
+            prev = user_id;
+            file << user_id << "|" << mat.get_row(user_id).size() << std::endl;
+        }
+        file << item_id << "  " << mat.get(user_id, item_id) << std::endl;
     }
 }
 
