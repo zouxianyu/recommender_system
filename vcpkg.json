@@ -5,5 +5,8 @@
   "dependencies" : [ {
     "name" : "indicators",
     "version>=" : "2.2"
+  }, {
+    "name" : "cxxopts",
+    "version>=" : "3.1.1"
   } ]
 }

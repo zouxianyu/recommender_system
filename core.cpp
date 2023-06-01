@@ -354,8 +354,8 @@ std::array<std::span<const IntItem>, 2> get_similar_items(
 
 /**
  * predict score of a given item
- * @param user_id user id to predict
- * @param item_id item id to predict
+ * @param user_id user id to predict_impl
+ * @param item_id item id to predict_impl
  * @param user_mat user matrix (user -> item score)
  * @param global_avg_score cached global average score
  * @param user_avg_score cached average score for each user
@@ -363,11 +363,11 @@ std::array<std::span<const IntItem>, 2> get_similar_items(
  * @param similar_score_map cached similar score map
  * @param item_attr item attribute matrix (item -> attribute)
  * @param item_attr_rev reverse item attribute matrix (attribute -> item)
- * @param first_try whether it is the first try,
+ * @param consider_similar_items whether it is the first try,
  *                  determine whether to calculate similar items
  * @return predicted score
  */
-double predict(
+double predict_impl(
         size_t user_id,
         size_t item_id,
         const SparseMatrix<double> &user_mat,
@@ -377,7 +377,7 @@ double predict(
         std::map<size_t, std::vector<std::pair<size_t, double>>> &similar_score_map,
         const SparseMatrix<int> &item_attr,
         const SparseMatrix<int> &item_attr_rev,
-        bool first_try
+        bool consider_similar_items
 ) {
     double bias_user = user_avg_score[user_id] - global_avg_score;
     double bias_item = item_avg_score[item_id] - global_avg_score;
@@ -407,8 +407,13 @@ double predict(
     }
 
     double score;
+
     if (denominator < std::numeric_limits<double>::epsilon() || count <= 1) {
-        if (!first_try) {
+        // similar users not enough
+
+        // if it is the first try, calculate similar items
+        // else just abandon this similar item
+        if (!consider_similar_items) {
             return -1;
         }
 
@@ -417,6 +422,7 @@ double predict(
         for (std::span<const IntItem> items: get_similar_items(
                 item_id, item_attr, item_attr_rev)) {
 
+            // except the item itself
             size_t similar_item_count = items.size() - 1;
             if (similar_item_count <= 0) {
                 continue;
@@ -432,22 +438,34 @@ double predict(
                     continue;
                 }
 
-                double similar_item_score = predict(
-                        user_id,
-                        similar_item_id,
-                        user_mat,
-                        global_avg_score,
-                        user_avg_score,
-                        item_avg_score,
-                        similar_score_map,
-                        item_attr,
-                        item_attr_rev,
-                        false
-                );
+                // first try: get similar item score from user matrix directly
+                //            which is faster and more accurate
+                double similar_item_score = user_mat.get(
+                        user_id, similar_item_id);
+
+                // second try: try to predict similar item score
+                //             by recursively calling predict()
+                if (similar_item_score < 0) {
+                    similar_item_score = predict_impl(
+                            user_id,
+                            similar_item_id,
+                            user_mat,
+                            global_avg_score,
+                            user_avg_score,
+                            item_avg_score,
+                            similar_score_map,
+                            item_attr,
+                            item_attr_rev,
+                            false
+                    );
+                }
+
+                // failed: skip the similar item
                 if (similar_item_score < 0) {
                     continue;
                 }
 
+                // success: add the similar item score with attribute weight
                 similar_item_score_nominator +=
                         attr_weight * similar_item_score;
                 similar_item_score_denominator += attr_weight;
@@ -457,9 +475,11 @@ double predict(
 
         if (similar_item_score_denominator >
             std::numeric_limits<double>::epsilon()) {
+            // have enough similar items to calculate predict score
             score = similar_item_score_nominator /
                     similar_item_score_denominator;
         } else {
+            // no similar items, use user base score
             score = score_base;
         }
     } else {
@@ -477,9 +497,9 @@ double predict(
  * @param item_attr item attribute matrix (item -> attribute)
  * @return predicted score matrix
  */
-SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
-                           const SparseMatrix<double> &test_user_mat,
-                           const SparseMatrix<int> &item_attr) {
+SparseMatrix<double> predict(const SparseMatrix<double> &user_mat,
+                             const SparseMatrix<double> &test_user_mat,
+                             const SparseMatrix<int> &item_attr) {
 
     SparseMatrix<double> item_mat = user_mat.transpose();
 
@@ -509,7 +529,7 @@ SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
         for (const FpItem &item: test_user_mat.get_row(test_user_id)) {
             const size_t &item_id = item.col;
 
-            double score = predict(
+            double score = predict_impl(
                     test_user_id,
                     item_id,
                     user_mat,
@@ -526,7 +546,7 @@ SparseMatrix<double> solve(const SparseMatrix<double> &user_mat,
 
             // show progress bar
             double progress = static_cast<double>(++current_count) / all_count;
-            if (current_count == all_count || current_count % 500 == 0) {
+            if (current_count == all_count || current_count % 100 == 0) {
                 bar.set_progress(progress * 100);
             }
         }
