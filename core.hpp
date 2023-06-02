@@ -4,6 +4,9 @@
 #include <string>
 #include "sparse_matrix.hpp"
 
+constexpr int FEAT_USE_ATTR = 1;
+constexpr int FEAT_USE_WEIGHT = 2;
+
 SparseMatrix<double> read_train_dataset(const std::string &filename);
 
 SparseMatrix<double> read_test_dataset(const std::string &filename);
@@ -22,7 +25,9 @@ std::pair<SparseMatrix<double>, SparseMatrix<double>> make_train_test(
 
 SparseMatrix<double> predict(const SparseMatrix<double> &user_mat,
                              const SparseMatrix<double> &test_user_mat,
-                             const SparseMatrix<int> &item_attr);
+                             const SparseMatrix<int> &item_attr,
+                             int k,
+                             int flags);
 
 double RMSE(const SparseMatrix<double> &mat1,
             const SparseMatrix<double> &mat2);

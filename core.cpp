@@ -426,8 +426,8 @@ double predict_impl(
         std::map<size_t, std::vector<std::pair<size_t, double>>> &similar_score_map,
         const SparseMatrix<int> &item_attr,
         const SparseMatrix<int> &item_attr_rev,
-        bool consider_similar_items
-) {
+        bool consider_similar_items,
+        int flags) {
     double bias_user = user_avg_score[user_id] - global_avg_score;
     double bias_item = item_avg_score[item_id] - global_avg_score;
     double score_base = global_avg_score + bias_user + bias_item;
@@ -457,6 +457,17 @@ double predict_impl(
 
     double score;
 
+    // if we don't want to use item attribute
+    if (!(flags & FEAT_USE_ATTR)) {
+        if (denominator < std::numeric_limits<double>::epsilon()) {
+            score = score_base;
+        } else {
+            score = score_base + numerator / denominator;
+        }
+        return std::clamp(score, 0.0, 100.0);
+    }
+
+    // use item attribute if needed
     if (denominator < std::numeric_limits<double>::epsilon() || count <= 1) {
         // similar users not enough
 
@@ -477,7 +488,10 @@ double predict_impl(
                 continue;
             }
 
-            double attr_weight = 1.0 / similar_item_count;
+            // more items with the same attribute, less weight
+            double attr_weight = flags & FEAT_USE_WEIGHT ?
+                                 1.0 / similar_item_count :
+                                 1.0;
 
             for (const IntItem &entry: items) {
                 const size_t &similar_item_id = entry.col;
@@ -505,8 +519,7 @@ double predict_impl(
                             similar_score_map,
                             item_attr,
                             item_attr_rev,
-                            false
-                    );
+                            false, 0);
                 }
 
                 // failed: skip the similar item
@@ -548,7 +561,9 @@ double predict_impl(
  */
 SparseMatrix<double> predict(const SparseMatrix<double> &user_mat,
                              const SparseMatrix<double> &test_user_mat,
-                             const SparseMatrix<int> &item_attr) {
+                             const SparseMatrix<int> &item_attr,
+                             int k,
+                             int flags) {
 
     SparseMatrix<double> item_mat = user_mat.transpose();
 
@@ -559,7 +574,7 @@ SparseMatrix<double> predict(const SparseMatrix<double> &user_mat,
     SparseMatrix<int> item_attr_rev = item_attr.transpose();
 
     auto similar_score_map =
-            get_top_k_similar_mat(user_mat, 5000, user_avg_score);
+            get_top_k_similar_mat(user_mat, k, user_avg_score);
 
     // info for progress bar
     const size_t all_count = test_user_mat.get_all().size();
@@ -588,7 +603,8 @@ SparseMatrix<double> predict(const SparseMatrix<double> &user_mat,
                     similar_score_map,
                     item_attr,
                     item_attr_rev,
-                    true
+                    true,
+                    flags
             );
 
             result.emplace_back(test_user_id, item_id, score);
