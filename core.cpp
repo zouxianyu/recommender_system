@@ -519,7 +519,9 @@ double predict_impl(
                             similar_score_map,
                             item_attr,
                             item_attr_rev,
-                            false, 0);
+                            false,
+                            flags
+                    );
                 }
 
                 // failed: skip the similar item
