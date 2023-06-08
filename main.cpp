@@ -109,6 +109,16 @@ int main(int argc, char *argv[]) {
             auto test_dataset = read_test_dataset(test_filename);
             done();
 
+            std::cout << "test statistics:" << std::endl
+                      << "users   = " << test_dataset.row_indexes().size()
+                      << std::endl
+                      << "items   = "
+                      << test_dataset.transpose().row_indexes().size()
+                      << std::endl
+                      << "ratings = "
+                      << test_dataset.get_all().size()
+                      << std::endl;
+
             auto result = predict(all_dataset, test_dataset, item_attribute,
                                   k, flags);
 
